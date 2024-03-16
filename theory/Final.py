@@ -1,6 +1,6 @@
 from copy import deepcopy
 
-#Regex validation
+# Regex validation
 def is_valid_regex(regex):
     return valid_brackets(regex) and valid_operations(regex)
 
@@ -221,7 +221,7 @@ class RegexTree:
         if DEBUG == True:
             print(self.followpos)
     
-    def toDfa(self):
+    def toNfa(self):
 
         def contains_hashtag(q):
             for i in q:
@@ -229,11 +229,11 @@ class RegexTree:
                     return True
             return False
 
-        M = [] #Marked states
-        Q = [] #States list in the followpos form ( array of positions ) 
-        V = alphabet - {'#', lambda_symbol if use_lambda else ''} #Automata alphabet
-        d = [] #Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
-        F = [] #FInal states list in the form of indexes (int)
+        M = [] # Marked states
+        Q = [] # States list in the followpos form (array of positions) 
+        V = alphabet - {'#', lambda_symbol if use_lambda else ''} # Automata alphabet
+        d = [] # Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
+        F = [] # Final states list in the form of indexes (int)
         q0 = self.root.firstpos
 
         Q.append(q0)
@@ -241,79 +241,88 @@ class RegexTree:
             F.append(Q.index(q0))
         
         while len(Q) - len(M) > 0:
-            #There exists one unmarked
-            #We take one of those
+            # There exists one unmarked
+            # We take one of those
             q = [i for i in Q if i not in M][0]
-            #Generating the delta dictionary for the new state
+            # Generating the delta dictionary for the new state
             d.append({})
-            #We mark it
+            # We mark it
             M.append(q)
-            #For each letter in the automata's alphabet
+            # For each letter in the automata's alphabet
             for a in V:
                 # Compute destination state ( d(q,a) = U )
                 U = []
-                #Compute U
-                #foreach position in state
+                # Compute U
+                # foreach position in state
                 for i in q:
-                    #if i has label a
+                    # if i has label a
                     if self.followpos[i][0] == a:
-                        #We add the position to U's composition
+                        # We add the position to U's composition
                         U = U + self.followpos[i][1]
                 U = sorted(list(set(U)))
-                #Checking if this is a valid state
+                # Checking if this is a valid state
                 if len(U) == 0:
-                    #No positions, skipping, it won't produce any new states ( also won't be final )
+                    # No positions, skipping, it won't produce any new states (also won't be final)
                     continue
                 if U not in Q:
                     Q.append(U)
                     if contains_hashtag(U):
                         F.append(Q.index(U))
-                #d(q,a) = U
+                # d(q,a) = U
                 d[Q.index(q)][a] = Q.index(U)
         
-        return Dfa(Q,V,d,Q.index(q0),F)
+        return Nfa(Q,V,d,Q.index(q0),F)
 
         
-class Dfa:
+class Nfa:
 
-    def __init__(self,Q,V,d,q0,F):
-        self.Q = Q
-        self.V = V
-        self.d = d
-        self.q0 = q0
-        self.F = F
+    def __init__(self, Q, V, d, q0, F):
+        self.Q = Q  # Set of states
+        self.V = V  # Alphabet
+        self.d = d  # Transitions (dictionary of dictionaries)
+        self.q0 = q0  # Start state
+        self.F = F  # Set of final states
+
+    def epsilon_closure(self, states):
+        # Compute the ε-closure of a set of states
+        closure = set(states)
+        stack = list(states)
+        while stack:
+            state = stack.pop()
+            if state in self.d and '' in self.d[state]:  # ε-transition
+                for s in self.d[state]['']:
+                    if s not in closure:
+                        closure.add(s)
+                        stack.append(s)
+        return closure
 
     def run(self, text):
-        #Checking if the input is in the current alphabet
+        # Checking if the input is in the current alphabet
         if len(set(text) - self.V) != 0:
-            #Not all the characters are in the language
+            # Not all the characters are in the language
             print('ERROR characters',(set(text)-self.V),'are not in the automata\'s alphabet')
             exit(0)
         
-        #Running the automata
-        q = self.q0
-        for i in text:
-            #Check if transition exists
-            if q >= len(self.d):
-                print('Message NOT accepted, state has no transitions')
-                exit(0)
-            if i not in self.d[q].keys():
-                print('Message NOT accepted, state has no transitions with the character')
-                exit(0)
-            #Execute transition
-            q = self.d[q][i]
+        # Running the automata
+        current_states = self.epsilon_closure([self.q0])
+        for symbol in text:
+            next_states = set()
+            for state in current_states:
+                if state in self.d and symbol in self.d[state]:
+                    next_states.update(self.epsilon_closure([self.d[state][symbol]]))
+            current_states = next_states
         
-        if q in self.F:
+        if any(state in self.F for state in current_states):
             print('Message accepted!')
         else:
             print('Message NOT accepted, stopped in an unfinal state')
 
     def write(self):
         for i in range(len(self.Q)):
-            #Printing index, the delta fuunction for that transition and if it's final state
+            # Printing index, the delta function for that transition, and if it's a final state
             print(i,self.d[i],'F' if i in self.F else '')
 
-#Preprocessing Functions
+# Preprocessing Functions
 def preprocess(regex):
     regex = clean_kleene(regex)
     regex = regex.replace(' ','')
@@ -331,38 +340,38 @@ def clean_kleene(regex):
 def gen_alphabet(regex):
     return set(regex) - set('()|*')
 
-#Settings
+# Settings
 DEBUG = False
 use_lambda = False
 lambda_symbol = '_'
 alphabet = None
 
-#Main
+# Main
 regex = '(aa|ba)*'
-# regex = input("Please Enter a Regex : ")
+regex = input("Please Enter a Regex : ")
 
-#Check
+# Check
 if not is_valid_regex(regex):
     exit(0)
 
-#Preprocess regex and generate the alphabet    
+# Preprocess regex and generate the alphabet    
 p_regex = preprocess(regex)
 alphabet = gen_alphabet(p_regex)
-#add optional letters that don't appear in the expression
+# add optional letters that don't appear in the expression
 extra = ''
 alphabet = alphabet.union(set(extra))
 
-#Construct
+# Construct
 tree = RegexTree(p_regex)
 if DEBUG:
     tree.write()
-dfa = tree.toDfa()
+nfa = tree.toNfa()
 
-#Test
+# Test
 message = 'aabaaa'
 print('This is the regex : ' + regex)
 print('This is the alphabet : ' + ''.join(sorted(alphabet)))
 print('This is the automata : \n')
-dfa.write()
+nfa.write()
 print('\nTesting for : "'+message+'" : ')
-dfa.run(message)
+nfa.run(message)
