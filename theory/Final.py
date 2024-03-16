@@ -13,11 +13,11 @@ def valid_brackets(regex):
         if c == ')':
             opened_brackets -= 1
         if opened_brackets < 0:
-            print('ERROR missing bracket')
+            print('ERROR: Missing bracket')
             return False
     if opened_brackets == 0:
         return True
-    print('ERROR unclosed brackets')
+    print('ERROR: Unclosed brackets')
     return False
 
 
@@ -25,22 +25,23 @@ def valid_operations(regex):
     for i, c in enumerate(regex):
         if c == '*':
             if i == 0:
-                print('ERROR * with no argument at', i)
+                print('ERROR: * with no argument at', i)
                 return False
             if regex[i - 1] in '(|':
-                print('ERROR * with no argument at', i)
+                print('ERROR: * with no argument at', i)
                 return False
         if c == '|':
             if i == 0 or i == len(regex) - 1:
-                print('ERROR | with missing argument at', i)
+                print('ERROR: | with missing argument at', i)
                 return False
             if regex[i - 1] in '(|':
-                print('ERROR | with missing argument at', i)
+                print('ERROR: | with missing argument at', i)
                 return False
             if regex[i + 1] in ')|':
-                print('ERROR | with missing argument at', i)
+                print('ERROR: | with missing argument at', i)
                 return False
     return True
+
 
 class RegexNode:
 
@@ -49,11 +50,11 @@ class RegexNode:
         while regex[0] == '(' and regex[-1] == ')' and is_valid_regex(regex[1:-1]):
             regex = regex[1:-1]
         return regex
-    
+
     @staticmethod
     def is_concat(c):
         return c == '(' or RegexNode.is_letter(c)
-    
+
     @staticmethod
     def is_letter(c):
         return c in alphabet
@@ -67,12 +68,12 @@ class RegexNode:
         self.children = []
 
         if DEBUG:
-            print('Current : '+regex)
-        #Check if it is leaf
+            print('Current : ' + regex)
+        # Check if it is leaf
         if len(regex) == 1 and self.is_letter(regex):
-            #Leaf
+            # Leaf
             self.item = regex
-            #Lambda checking
+            # Lambda checking
             if use_lambda:
                 if self.item == lambda_symbol:
                     self.nullable = True
@@ -81,130 +82,148 @@ class RegexNode:
             else:
                 self.nullable = False
             return
-        
-        #It is an internal node
-        #Finding the leftmost operators in all three
+
+        # It is an internal node
+        # Finding the leftmost operators in all three
         kleene = -1
         or_operator = -1
         concatenation = -1
         i = 0
 
-        #Getting the rest of terms    
+        # Getting the rest of terms
         while i < len(regex):
             if regex[i] == '(':
-                #Composed block
+                # Composed block
                 bracketing_level = 1
-                #Skipping the entire term
-                i+=1
+                # Skipping the entire term
+                i += 1
                 while bracketing_level != 0 and i < len(regex):
                     if regex[i] == '(':
                         bracketing_level += 1
                     if regex[i] == ')':
                         bracketing_level -= 1
-                    i+=1
+                    i += 1
             else:
-                #Going to the next char
-                i+=1
-            
-            #Found a concatenation in previous iteration
-            #And also it was the last element check if breaking
+                # Going to the next char
+                i += 1
+
+            # Found a concatenation in previous iteration
+            # And also it was the last element check if breaking
             if i == len(regex):
                 break
 
-            #Testing if concatenation
+            # Testing if concatenation
             if self.is_concat(regex[i]):
                 if concatenation == -1:
                     concatenation = i
                 continue
-            #Testing for kleene
+            # Testing for kleene
             if regex[i] == '*':
                 if kleene == -1:
                     kleene = i
                 continue
-            #Testing for or operator
+            # Testing for or operator
             if regex[i] == '|':
                 if or_operator == -1:
                     or_operator = i
-        
-        #Setting the current operation by priority
+
+        # Setting the current operation by priority
         if or_operator != -1:
-            #Found an or operation
+            # Found an or operation
             self.item = '|'
             self.children.append(RegexNode(self.trim_brackets(regex[:or_operator])))
-            self.children.append(RegexNode(self.trim_brackets(regex[(or_operator+1):])))
+            self.children.append(RegexNode(self.trim_brackets(regex[(or_operator + 1):])))
         elif concatenation != -1:
-            #Found a concatenation
+            # Found a concatenation
             self.item = '.'
             self.children.append(RegexNode(self.trim_brackets(regex[:concatenation])))
             self.children.append(RegexNode(self.trim_brackets(regex[concatenation:])))
         elif kleene != -1:
-            #Found a kleene
+            # Found a kleene
             self.item = '*'
             self.children.append(RegexNode(self.trim_brackets(regex[:kleene])))
 
     def calc_functions(self, pos, followpos):
         if self.is_letter(self.item):
-            #Is a leaf
+            # Is a leaf
             self.firstpos = [pos]
             self.lastpos = [pos]
             self.position = pos
-            #Add the position in the followpos list
-            followpos.append([self.item,[]])
-            return pos+1
-        #Is an internal node
+            # Add the position in the followpos list
+            followpos.append([self.item, []])
+            return pos + 1
+        # Is an internal node
         for child in self.children:
             pos = child.calc_functions(pos, followpos)
-        #Calculate current functions
+        # Calculate current functions
 
         if self.item == '.':
-            #Is concatenation
-            #Firstpos
+            # Is concatenation
+            # Firstpos
             if self.children[0].nullable:
                 self.firstpos = sorted(list(set(self.children[0].firstpos + self.children[1].firstpos)))
             else:
                 self.firstpos = deepcopy(self.children[0].firstpos)
-            #Lastpos
+            # Lastpos
             if self.children[1].nullable:
                 self.lastpos = sorted(list(set(self.children[0].lastpos + self.children[1].lastpos)))
             else:
                 self.lastpos = deepcopy(self.children[1].lastpos)
-            #Nullable
+            # Nullable
             self.nullable = self.children[0].nullable and self.children[1].nullable
-            #Followpos
+            # Followpos
             for i in self.children[0].lastpos:
                 for j in self.children[1].firstpos:
                     if j not in followpos[i][1]:
                         followpos[i][1] = sorted(followpos[i][1] + [j])
 
         elif self.item == '|':
-            #Is or operator
-            #Firstpos
+            # Is or operator
+            # Firstpos
             self.firstpos = sorted(list(set(self.children[0].firstpos + self.children[1].firstpos)))
-            #Lastpos
+            # Lastpos
             self.lastpos = sorted(list(set(self.children[0].lastpos + self.children[1].lastpos)))
-            #Nullable
+            # Nullable
             self.nullable = self.children[0].nullable or self.children[1].nullable
 
         elif self.item == '*':
-            #Is kleene
-            #Firstpos
+            # Is kleene
+            # Firstpos
             self.firstpos = deepcopy(self.children[0].firstpos)
-            #Lastpos
+            # Lastpos
             self.lastpos = deepcopy(self.children[0].lastpos)
-            #Nullable
+            # Nullable
             self.nullable = True
-            #Followpos
+            # Followpos
             for i in self.children[0].lastpos:
                 for j in self.children[0].firstpos:
                     if j not in followpos[i][1]:
                         followpos[i][1] = sorted(followpos[i][1] + [j])
+        elif self.item == '+':
+            # For the one or more expression, treat it as concatenation followed by a kleene star
+            self.item = '.'
+            # Firstpos
+            self.firstpos = deepcopy(self.children[0].firstpos)
+            # Lastpos
+            self.lastpos = deepcopy(self.children[0].lastpos)
+            # Nullable
+            self.nullable = self.children[0].nullable
+            # Followpos
+            for i in self.children[0].lastpos:
+                for j in self.children[0].firstpos:
+                    if j not in followpos[i][1]:
+                        followpos[i][1] = sorted(followpos[i][1] + [j])
+
+            # Additionally, append a kleene star node to the current node
+            self.children.append(RegexNode('*' + self.children[0].item))
 
         return pos
 
     def write_level(self, level):
         print(str(level) + ' ' + self.item, self.firstpos, self.lastpos, self.nullable, '' if self.position == None else self.position)
         for child in self.children:
-            child.write_level(level+1)
+            child.write_level(level + 1)
+
 
 class RegexTree:
 
@@ -212,15 +231,15 @@ class RegexTree:
         self.root = RegexNode(regex)
         self.followpos = []
         self.functions()
-    
+
     def write(self):
         self.root.write_level(0)
 
     def functions(self):
-        positions = self.root.calc_functions(0, self.followpos)   
+        positions = self.root.calc_functions(0, self.followpos)
         if DEBUG == True:
             print(self.followpos)
-    
+
     def toNfa(self):
 
         def contains_hashtag(q):
@@ -229,17 +248,17 @@ class RegexTree:
                     return True
             return False
 
-        M = [] # Marked states
-        Q = [] # States list in the followpos form (array of positions) 
-        V = alphabet - {'#', lambda_symbol if use_lambda else ''} # Automata alphabet
-        d = [] # Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
-        F = [] # Final states list in the form of indexes (int)
+        M = []  # Marked states
+        Q = []  # States list in the followpos form (array of positions)
+        V = alphabet - {'#', lambda_symbol if use_lambda else ''}  # Automata alphabet
+        d = []  # Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
+        F = []  # Final states list in the form of indexes (int)
         q0 = self.root.firstpos
 
         Q.append(q0)
         if contains_hashtag(q0):
             F.append(Q.index(q0))
-        
+
         while len(Q) - len(M) > 0:
             # There exists one unmarked
             # We take one of those
@@ -270,10 +289,10 @@ class RegexTree:
                         F.append(Q.index(U))
                 # d(q,a) = U
                 d[Q.index(q)][a] = Q.index(U)
-        
-        return Nfa(Q,V,d,Q.index(q0),F)
 
-        
+        return Nfa(Q, V, d, Q.index(q0), F)
+
+
 class Nfa:
 
     def __init__(self, Q, V, d, q0, F):
@@ -300,9 +319,9 @@ class Nfa:
         # Checking if the input is in the current alphabet
         if len(set(text) - self.V) != 0:
             # Not all the characters are in the language
-            print('ERROR characters',(set(text)-self.V),'are not in the automata\'s alphabet')
+            print('ERROR: Characters', (set(text) - self.V), 'are not in the automata\'s alphabet')
             exit(0)
-        
+
         # Running the automata
         current_states = self.epsilon_closure([self.q0])
         for symbol in text:
@@ -311,7 +330,7 @@ class Nfa:
                 if state in self.d and symbol in self.d[state]:
                     next_states.update(self.epsilon_closure([self.d[state][symbol]]))
             current_states = next_states
-        
+
         if any(state in self.F for state in current_states):
             print('Message accepted!')
         else:
@@ -320,16 +339,18 @@ class Nfa:
     def write(self):
         for i in range(len(self.Q)):
             # Printing index, the delta function for that transition, and if it's a final state
-            print(i,self.d[i],'F' if i in self.F else '')
+            print(i, self.d[i], 'F' if i in self.F else '')
+
 
 # Preprocessing Functions
 def preprocess(regex):
     regex = clean_kleene(regex)
-    regex = regex.replace(' ','')
+    regex = regex.replace(' ', '')
     regex = '(' + regex + ')' + '#'
     while '()' in regex:
-        regex = regex.replace('()','')
+        regex = regex.replace('()', '')
     return regex
+
 
 def clean_kleene(regex):
     for i in range(0, len(regex) - 1):
@@ -337,8 +358,12 @@ def clean_kleene(regex):
             regex = regex[:i] + regex[i + 1:]
     return regex
 
+
 def gen_alphabet(regex):
-    return set(regex) - set('()|*')
+    alphabet = set(regex) - set('()|*+')
+    # Add the plus sign explicitly
+    return alphabet
+
 
 # Settings
 DEBUG = False
@@ -347,19 +372,15 @@ lambda_symbol = '_'
 alphabet = None
 
 # Main
-regex = '(aa|ba)*'
 regex = input("Please Enter a Regex : ")
 
 # Check
 if not is_valid_regex(regex):
     exit(0)
 
-# Preprocess regex and generate the alphabet    
+# Preprocess regex and generate the alphabet
 p_regex = preprocess(regex)
 alphabet = gen_alphabet(p_regex)
-# add optional letters that don't appear in the expression
-extra = ''
-alphabet = alphabet.union(set(extra))
 
 # Construct
 tree = RegexTree(p_regex)
@@ -368,10 +389,10 @@ if DEBUG:
 nfa = tree.toNfa()
 
 # Test
-message = 'aabaaa'
+message = input("Please Enter a testing : ")
 print('This is the regex : ' + regex)
 print('This is the alphabet : ' + ''.join(sorted(alphabet)))
 print('This is the automata : \n')
 nfa.write()
-print('\nTesting for : "'+message+'" : ')
+print('\nTesting for : "' + message + '" : ')
 nfa.run(message)
