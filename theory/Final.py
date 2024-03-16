@@ -40,6 +40,13 @@ def valid_operations(regex):
             if regex[i + 1] in ')|':
                 print('ERROR: | with missing argument at', i)
                 return False
+        if c == '+':
+            if i == 0:
+                print('ERROR: + with no argument at', i)
+                return False
+            if regex[i - 1] in '(|':
+                print('ERROR: + with no argument at', i)
+                return False
     return True
 
 
@@ -88,6 +95,7 @@ class RegexNode:
         kleene = -1
         or_operator = -1
         concatenation = -1
+        plus = -1
         i = 0
 
         # Getting the rest of terms
@@ -126,6 +134,12 @@ class RegexNode:
             if regex[i] == '|':
                 if or_operator == -1:
                     or_operator = i
+                continue
+            # Testing for plus operator
+            if regex[i] == '+':
+                if plus == -1:
+                    plus = i
+                continue
 
         # Setting the current operation by priority
         if or_operator != -1:
@@ -142,6 +156,10 @@ class RegexNode:
             # Found a kleene
             self.item = '*'
             self.children.append(RegexNode(self.trim_brackets(regex[:kleene])))
+        elif plus != -1:
+            # Found a plus
+            self.item = '+'
+            self.children.append(RegexNode(self.trim_brackets(regex[:plus])))
 
     def calc_functions(self, pos, followpos):
         if self.is_letter(self.item):
@@ -220,7 +238,7 @@ class RegexNode:
         return pos
 
     def write_level(self, level):
-        print(str(level) + ' ' + self.item, self.firstpos, self.lastpos, self.nullable, '' if self.position == None else self.position)
+        print(str(level) + ' ' + self.item, self.firstpos, self.lastpos, self.nullable, '' if self.position is None else self.position)
         for child in self.children:
             child.write_level(level + 1)
 
@@ -237,57 +255,43 @@ class RegexTree:
 
     def functions(self):
         positions = self.root.calc_functions(0, self.followpos)
-        if DEBUG == True:
+        if DEBUG:
             print(self.followpos)
 
     def toNfa(self):
-
-        def contains_hashtag(q):
-            for i in q:
-                if self.followpos[i][0] == '#':
-                    return True
-            return False
-
         M = []  # Marked states
         Q = []  # States list in the followpos form (array of positions)
         V = alphabet - {'#', lambda_symbol if use_lambda else ''}  # Automata alphabet
         d = []  # Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
         F = []  # Final states list in the form of indexes (int)
         q0 = self.root.firstpos
-
+        def contains_hashtag(q):
+            for i in q:
+                if self.followpos[i][0] == '#':
+                    return True
+            return False
+        
         Q.append(q0)
         if contains_hashtag(q0):
             F.append(Q.index(q0))
 
         while len(Q) - len(M) > 0:
-            # There exists one unmarked
-            # We take one of those
             q = [i for i in Q if i not in M][0]
-            # Generating the delta dictionary for the new state
             d.append({})
-            # We mark it
+
             M.append(q)
-            # For each letter in the automata's alphabet
             for a in V:
-                # Compute destination state ( d(q,a) = U )
                 U = []
-                # Compute U
-                # foreach position in state
                 for i in q:
-                    # if i has label a
                     if self.followpos[i][0] == a:
-                        # We add the position to U's composition
-                        U = U + self.followpos[i][1]
+                        U.extend(self.followpos[i][1])
                 U = sorted(list(set(U)))
-                # Checking if this is a valid state
                 if len(U) == 0:
-                    # No positions, skipping, it won't produce any new states (also won't be final)
                     continue
                 if U not in Q:
                     Q.append(U)
                     if contains_hashtag(U):
                         F.append(Q.index(U))
-                # d(q,a) = U
                 d[Q.index(q)][a] = Q.index(U)
 
         return Nfa(Q, V, d, Q.index(q0), F)
@@ -338,8 +342,10 @@ class Nfa:
 
     def write(self):
         for i in range(len(self.Q)):
-            # Printing index, the delta function for that transition, and if it's a final state
-            print(i, self.d[i], 'F' if i in self.F else '')
+            transitions = self.d[i]
+            transition_str = ', '.join(f"{symbol}:{self.d[i][symbol]}" for symbol in transitions)
+            final_str = 'F' if i in self.F else ''
+            print(f"{i}: {{{transition_str}}}{final_str}")
 
 
 # Preprocessing Functions
@@ -361,7 +367,6 @@ def clean_kleene(regex):
 
 def gen_alphabet(regex):
     alphabet = set(regex) - set('()|*+')
-    # Add the plus sign explicitly
     return alphabet
 
 
@@ -389,7 +394,7 @@ if DEBUG:
 nfa = tree.toNfa()
 
 # Test
-message = input("Please Enter a testing : ")
+message = '111'
 print('This is the regex : ' + regex)
 print('This is the alphabet : ' + ''.join(sorted(alphabet)))
 print('This is the automata : \n')
