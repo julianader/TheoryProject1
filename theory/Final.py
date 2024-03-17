@@ -1,403 +1,189 @@
-from copy import deepcopy
+import sys
 
-# Regex validation
-def is_valid_regex(regex):
-    return valid_brackets(regex) and valid_operations(regex)
+states = 0
 
-
-def valid_brackets(regex):
-    opened_brackets = 0
-    for c in regex:
-        if c == '(':
-            opened_brackets += 1
-        if c == ')':
-            opened_brackets -= 1
-        if opened_brackets < 0:
-            print('ERROR: Missing bracket')
-            return False
-    if opened_brackets == 0:
-        return True
-    print('ERROR: Unclosed brackets')
-    return False
-
-
-def valid_operations(regex):
-    for i, c in enumerate(regex):
-        if c == '*':
-            if i == 0:
-                print('ERROR: * with no argument at', i)
-                return False
-            if regex[i - 1] in '(|':
-                print('ERROR: * with no argument at', i)
-                return False
-        if c == '|':
-            if i == 0 or i == len(regex) - 1:
-                print('ERROR: | with missing argument at', i)
-                return False
-            if regex[i - 1] in '(|':
-                print('ERROR: | with missing argument at', i)
-                return False
-            if regex[i + 1] in ')|':
-                print('ERROR: | with missing argument at', i)
-                return False
-        if c == '+':
-            if i == 0:
-                print('ERROR: + with no argument at', i)
-                return False
-            if regex[i - 1] in '(|':
-                print('ERROR: + with no argument at', i)
-                return False
+def checkformat(y):
+    if (y < 48 or y > 57) and (y < 97 or y > 122) and (y < 65 or y > 90):
+        return False
     return True
 
-
-class RegexNode:
-
-    @staticmethod
-    def trim_brackets(regex):
-        while regex[0] == '(' and regex[-1] == ')' and is_valid_regex(regex[1:-1]):
-            regex = regex[1:-1]
-        return regex
-
-    @staticmethod
-    def is_concat(c):
-        return c == '(' or RegexNode.is_letter(c)
-
-    @staticmethod
-    def is_letter(c):
-        return c in alphabet
-
-    def __init__(self, regex):
-        self.nullable = None
-        self.firstpos = []
-        self.lastpos = []
-        self.item = None
-        self.position = None
-        self.children = []
-
-        if DEBUG:
-            print('Current : ' + regex)
-        # Check if it is leaf
-        if len(regex) == 1 and self.is_letter(regex):
-            # Leaf
-            self.item = regex
-            # Lambda checking
-            if use_lambda:
-                if self.item == lambda_symbol:
-                    self.nullable = True
-                else:
-                    self.nullable = False
-            else:
-                self.nullable = False
-            return
-
-        # It is an internal node
-        # Finding the leftmost operators in all three
-        kleene = -1
-        or_operator = -1
-        concatenation = -1
-        plus = -1
-        i = 0
-
-        # Getting the rest of terms
-        while i < len(regex):
-            if regex[i] == '(':
-                # Composed block
-                bracketing_level = 1
-                # Skipping the entire term
-                i += 1
-                while bracketing_level != 0 and i < len(regex):
-                    if regex[i] == '(':
-                        bracketing_level += 1
-                    if regex[i] == ')':
-                        bracketing_level -= 1
-                    i += 1
-            else:
-                # Going to the next char
-                i += 1
-
-            # Found a concatenation in previous iteration
-            # And also it was the last element check if breaking
-            if i == len(regex):
-                break
-
-            # Testing if concatenation
-            if self.is_concat(regex[i]):
-                if concatenation == -1:
-                    concatenation = i
-                continue
-            # Testing for kleene
-            if regex[i] == '*':
-                if kleene == -1:
-                    kleene = i
-                continue
-            # Testing for or operator
-            if regex[i] == '|':
-                if or_operator == -1:
-                    or_operator = i
-                continue
-            # Testing for plus operator
-            if regex[i] == '+':
-                if plus == -1:
-                    plus = i
-                continue
-
-        # Setting the current operation by priority
-        if or_operator != -1:
-            # Found an or operation
-            self.item = '|'
-            self.children.append(RegexNode(self.trim_brackets(regex[:or_operator])))
-            self.children.append(RegexNode(self.trim_brackets(regex[(or_operator + 1):])))
-        elif concatenation != -1:
-            # Found a concatenation
-            self.item = '.'
-            self.children.append(RegexNode(self.trim_brackets(regex[:concatenation])))
-            self.children.append(RegexNode(self.trim_brackets(regex[concatenation:])))
-        elif kleene != -1:
-            # Found a kleene
-            self.item = '*'
-            self.children.append(RegexNode(self.trim_brackets(regex[:kleene])))
-        elif plus != -1:
-            # Found a plus
-            self.item = '+'
-            self.children.append(RegexNode(self.trim_brackets(regex[:plus])))
-
-    def calc_functions(self, pos, followpos):
-        if self.is_letter(self.item):
-            # Is a leaf
-            self.firstpos = [pos]
-            self.lastpos = [pos]
-            self.position = pos
-            # Add the position in the followpos list
-            followpos.append([self.item, []])
-            return pos + 1
-        # Is an internal node
-        for child in self.children:
-            pos = child.calc_functions(pos, followpos)
-        # Calculate current functions
-
-        if self.item == '.':
-            # Is concatenation
-            # Firstpos
-            if self.children[0].nullable:
-                self.firstpos = sorted(list(set(self.children[0].firstpos + self.children[1].firstpos)))
-            else:
-                self.firstpos = deepcopy(self.children[0].firstpos)
-            # Lastpos
-            if self.children[1].nullable:
-                self.lastpos = sorted(list(set(self.children[0].lastpos + self.children[1].lastpos)))
-            else:
-                self.lastpos = deepcopy(self.children[1].lastpos)
-            # Nullable
-            self.nullable = self.children[0].nullable and self.children[1].nullable
-            # Followpos
-            for i in self.children[0].lastpos:
-                for j in self.children[1].firstpos:
-                    if j not in followpos[i][1]:
-                        followpos[i][1] = sorted(followpos[i][1] + [j])
-
-        elif self.item == '|':
-            # Is or operator
-            # Firstpos
-            self.firstpos = sorted(list(set(self.children[0].firstpos + self.children[1].firstpos)))
-            # Lastpos
-            self.lastpos = sorted(list(set(self.children[0].lastpos + self.children[1].lastpos)))
-            # Nullable
-            self.nullable = self.children[0].nullable or self.children[1].nullable
-
-        elif self.item == '*':
-            # Is kleene
-            # Firstpos
-            self.firstpos = deepcopy(self.children[0].firstpos)
-            # Lastpos
-            self.lastpos = deepcopy(self.children[0].lastpos)
-            # Nullable
-            self.nullable = True
-            # Followpos
-            for i in self.children[0].lastpos:
-                for j in self.children[0].firstpos:
-                    if j not in followpos[i][1]:
-                        followpos[i][1] = sorted(followpos[i][1] + [j])
-        elif self.item == '+':
-            # For the one or more expression, treat it as concatenation followed by a kleene star
-            self.item = '.'
-            # Firstpos
-            self.firstpos = deepcopy(self.children[0].firstpos)
-            # Lastpos
-            self.lastpos = deepcopy(self.children[0].lastpos)
-            # Nullable
-            self.nullable = self.children[0].nullable
-            # Followpos
-            for i in self.children[0].lastpos:
-                for j in self.children[0].firstpos:
-                    if j not in followpos[i][1]:
-                        followpos[i][1] = sorted(followpos[i][1] + [j])
-
-            # Additionally, append a kleene star node to the current node
-            self.children.append(RegexNode('*' + self.children[0].item))
-
-        return pos
-
-    def write_level(self, level):
-        print(str(level) + ' ' + self.item, self.firstpos, self.lastpos, self.nullable, '' if self.position is None else self.position)
-        for child in self.children:
-            child.write_level(level + 1)
+def get_pre(ch):
+    if ch in ['+']:
+        return 1
+    elif ch in ['*']:
+        return 2
+    elif ch in ['.']:
+        return 3
+    elif ch in ['(']:
+        return 4
+    else:
+        return 0  # Default return value for unrecognized operators
 
 
-class RegexTree:
-
-    def __init__(self, regex):
-        self.root = RegexNode(regex)
-        self.followpos = []
-        self.functions()
-
-    def write(self):
-        self.root.write_level(0)
-
-    def functions(self):
-        positions = self.root.calc_functions(0, self.followpos)
-        if DEBUG:
-            print(self.followpos)
-
-    def toNfa(self):
-        M = []  # Marked states
-        Q = []  # States list in the followpos form (array of positions)
-        V = alphabet - {'#', lambda_symbol if use_lambda else ''}  # Automata alphabet
-        d = []  # Delta function, an array of dictionaries d[q] = {x1:q1, x2:q2 ..} where d(q,x1) = q1, d(q,x2) = q2..
-        F = []  # Final states list in the form of indexes (int)
-        q0 = self.root.firstpos
-        def contains_hashtag(q):
-            for i in q:
-                if self.followpos[i][0] == '#':
-                    return True
-            return False
-        
-        Q.append(q0)
-        if contains_hashtag(q0):
-            F.append(Q.index(q0))
-
-        while len(Q) - len(M) > 0:
-            q = [i for i in Q if i not in M][0]
-            d.append({})
-
-            M.append(q)
-            for a in V:
-                U = []
-                for i in q:
-                    if self.followpos[i][0] == a:
-                        U.extend(self.followpos[i][1])
-                U = sorted(list(set(U)))
-                if len(U) == 0:
-                    continue
-                if U not in Q:
-                    Q.append(U)
-                    if contains_hashtag(U):
-                        F.append(Q.index(U))
-                d[Q.index(q)][a] = Q.index(U)
-
-        return Nfa(Q, V, d, Q.index(q0), F)
-
-
-class Nfa:
-
-    def __init__(self, Q, V, d, q0, F):
-        self.Q = Q  # Set of states
-        self.V = V  # Alphabet
-        self.d = d  # Transitions (dictionary of dictionaries)
-        self.q0 = q0  # Start state
-        self.F = F  # Set of final states
-
-    def epsilon_closure(self, states):
-        # Compute the ε-closure of a set of states
-        closure = set(states)
-        stack = list(states)
-        while stack:
-            state = stack.pop()
-            if state in self.d and '' in self.d[state]:  # ε-transition
-                for s in self.d[state]['']:
-                    if s not in closure:
-                        closure.add(s)
-                        stack.append(s)
-        return closure
-
-    def run(self, text):
-        # Checking if the input is in the current alphabet
-        if len(set(text) - self.V) != 0:
-            # Not all the characters are in the language
-            print('ERROR: Characters', (set(text) - self.V), 'are not in the automata\'s alphabet')
-            exit(0)
-
-        # Running the automata
-        current_states = self.epsilon_closure([self.q0])
-        for symbol in text:
-            next_states = set()
-            for state in current_states:
-                if state in self.d and symbol in self.d[state]:
-                    next_states.update(self.epsilon_closure([self.d[state][symbol]]))
-            current_states = next_states
-
-        if any(state in self.F for state in current_states):
-            print('Message accepted!')
+def shunt(x):
+    stack = []
+    outstring = ""
+    for i in x:
+        ch = i
+        if checkformat(ord(ch)):
+            outstring = outstring + ch
+        elif ch == '(':
+            stack.insert(len(stack), ch)
+        elif ch == ')':
+            while len(stack) > 0 and stack[len(stack) - 1] != '(':
+                outstring = outstring + stack[len(stack) - 1]
+                stack.pop(len(stack) - 1)
+            stack.pop(len(stack) - 1)
         else:
-            print('Message NOT accepted, stopped in an unfinal state')
+            while len(stack) > 0 and get_pre(ch) >= get_pre(stack[len(stack) - 1]):
+                outstring = outstring + stack[len(stack) - 1]
+                stack.pop(len(stack) - 1)
+            stack.insert(len(stack), ch)
+    while len(stack) > 0:
+        outstring = outstring + stack[len(stack) - 1]
+        stack.pop(len(stack) - 1)
+    return outstring
 
-    def write(self):
-        for i in range(len(self.Q)):
-            transitions = self.d[i]
-            transition_str = ', '.join(f"{symbol}:{self.d[i][symbol]}" for symbol in transitions)
-            final_str = 'F' if i in self.F else ''
-            print(f"{i}: {{{transition_str}}}{final_str}")
+def pars_str(x):
+    res = []
+    for i in range(len(x) - 1):
+        res.append(x[i])
+        if checkformat(ord(x[i])) and checkformat(ord(x[i + 1])):
+            res.append('.')
+        elif x[i] == ')' and x[i + 1] == '(':
+            res.append('.')
+        elif checkformat(ord(x[i + 1])) and x[i] == ')':
+            res.append('.')
+        elif x[i + 1] == '(' and checkformat(ord(x[i])):
+            res.append('.')
+        elif x[i] == '*' and (checkformat(ord(x[i + 1])) or x[i + 1] == '('):
+            res.append('.')
+    if len(x) > 0:
+        check = x[len(x) - 1]
+        if check != res[len(res) - 1]:
+            res.append(check)
+    return ''.join(res)
+
+def NFA_sym(ch):
+    global letters
+    letters.update(set({ch}))
+    global states
+    val = ["Q{}".format(states), ch, "Q{}".format(states + 1)]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    states = states + 2
+    ret = list(["Q{}".format(states - 2), "Q{}".format(states - 1)])
+    return ret
+
+def nfa_unio(nfa1, nfa2):
+    global states
+    val = ["Q{}".format(states), '$', nfa1[0]]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = ["Q{}".format(states), '$', nfa2[0]]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = [nfa1[1], '$', "Q{}".format(states + 1)]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = [nfa2[1], '$', "Q{}".format(states + 1)]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    states = states + 2
+    return ["Q{}".format(states - 2), "Q{}".format(states - 1)]
+
+def loop(nfa1):
+    global states
+    val = [nfa1[1], '$', nfa1[0]]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = ["Q{}".format(states), '$', nfa1[0]]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = [nfa1[1], '$', "Q{}".format(states + 1)]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    val = ["Q{}".format(states), '$', "Q{}".format(states + 1)]
+    nfa["transition_function"].insert(len(nfa["transition_function"]), val)
+    states = states + 2
+    return ["Q{}".format(states - 2), "Q{}".format(states - 1)]
+
+def concatenation(nfa1, nfa2):
+    global states
+    indx = len(nfa['transition_function'])
+    val = [nfa1[1], '$', nfa2[0]]
+    nfa['transition_function'].insert(indx, val)
+    return [nfa1[0], nfa2[1]]
+def re2nfa(x):
+    stack = []
+    for i in x:
+        if checkformat(ord(i)):
+            stack.append(NFA_sym(i))
+        elif i == '|':
+            nfa2 = stack.pop()
+            nfa1 = stack.pop()
+            xt = nfa_unio(nfa1, nfa2)
+            stack.append(xt)
+        elif i == "*":
+            xt = loop(stack.pop())
+            stack.append(xt)
+        else:
+            nfa2 = stack.pop()
+            nfa1 = stack.pop()
+            xt = concatenation(nfa1, nfa2)
+            stack.append(xt)
+    nfa["start_states"] = [stack[0][0]]
+    nfa["final_states"] = [stack[0][1]]
 
 
-# Preprocessing Functions
-def preprocess(regex):
-    regex = clean_kleene(regex)
-    regex = regex.replace(' ', '')
-    regex = '(' + regex + ')' + '#'
-    while '()' in regex:
-        regex = regex.replace('()', '')
-    return regex
+def simulate_NFA(input_string, current_states, transition_function, visited_states=None):
+    if visited_states is None:
+        visited_states = set()
+
+    if len(input_string) == 0:
+        return current_states
+
+    next_states = set()
+    for state in current_states:
+        for transition in transition_function:
+            if transition[0] == state and (transition[1] == input_string[0] or transition[1] == '$'):
+                next_states.add(transition[2])
+
+    epsilon_closure = set(next_states)
+    for state in next_states:
+        if state not in visited_states:
+            visited_states.add(state)
+            epsilon_closure.update(simulate_NFA(input_string, [state], transition_function, visited_states))
+    
+    return epsilon_closure
 
 
-def clean_kleene(regex):
-    for i in range(0, len(regex) - 1):
-        while i < len(regex) - 1 and regex[i + 1] == regex[i] and regex[i] == '*':
-            regex = regex[:i] + regex[i + 1:]
-    return regex
 
+letters = set({})
 
-def gen_alphabet(regex):
-    alphabet = set(regex) - set('()|*+')
-    return alphabet
+x = input("Enter a regular expression: ")
+nfa = {}
+nfa["states"] = []
+nfa["letters"] = []
+nfa["transition_function"] = []
 
+x = pars_str(x)
+x = shunt(x)
+re2nfa(x)
 
-# Settings
-DEBUG = False
-use_lambda = False
-lambda_symbol = '_'
-alphabet = None
+s = set({})
+for x in range(len(nfa["transition_function"])):
+    s.update(set({nfa["transition_function"][x][0]}))
+    s.update(set({nfa["transition_function"][x][2]}))
 
-# Main
-regex = input("Please Enter a Regex : ")
+templis = list(letters)
+nfa["letters"] = templis
+s = list(s)
+s.sort(key=lambda a: int(a[1:]))
+nfa["states"] = s
 
-# Check
-if not is_valid_regex(regex):
-    exit(0)
+print("NFA states:", nfa["states"])
+print("NFA transition function:", nfa["transition_function"])
+print("NFA letters:", nfa["letters"])
+print("NFA start states:", nfa["start_states"])
+print("NFA final states:", nfa["final_states"])
 
-# Preprocess regex and generate the alphabet
-p_regex = preprocess(regex)
-alphabet = gen_alphabet(p_regex)
-
-# Construct
-tree = RegexTree(p_regex)
-if DEBUG:
-    tree.write()
-nfa = tree.toNfa()
-
-# Test
-message = '111'
-print('This is the regex : ' + regex)
-print('This is the alphabet : ' + ''.join(sorted(alphabet)))
-print('This is the automata : \n')
-nfa.write()
-print('\nTesting for : "' + message + '" : ')
-nfa.run(message)
+# Testing
+test_string = input("Enter a string to test: ")
+result_states = simulate_NFA(test_string, nfa["start_states"], nfa["transition_function"])
+if any(state in nfa["final_states"] for state in result_states):
+    print("String matches the regular expression.")
+else:
+    print("String does not match the regular expression.")
