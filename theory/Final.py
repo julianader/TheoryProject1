@@ -8,17 +8,14 @@ def checkformat(y):
     return True
 
 def get_pre(ch):
-    if ch in ['+']:
+    if ch in ['+', '*']:
         return 1
-    elif ch in ['*']:
-        return 2
     elif ch in ['.']:
-        return 3
+        return 2
     elif ch in ['(']:
-        return 4
+        return 3
     else:
         return 0  # Default return value for unrecognized operators
-
 
 def shunt(x):
     stack = []
@@ -48,15 +45,11 @@ def pars_str(x):
     res = []
     for i in range(len(x) - 1):
         res.append(x[i])
-        if checkformat(ord(x[i])) and checkformat(ord(x[i + 1])):
+        if (checkformat(ord(x[i])) and checkformat(ord(x[i + 1]))) or (x[i] == ')' and x[i + 1] == '('):
             res.append('.')
-        elif x[i] == ')' and x[i + 1] == '(':
+        elif checkformat(ord(x[i + 1])) and (x[i] == ')' or x[i] == '*' or x[i] == '+'):
             res.append('.')
-        elif checkformat(ord(x[i + 1])) and x[i] == ')':
-            res.append('.')
-        elif x[i + 1] == '(' and checkformat(ord(x[i])):
-            res.append('.')
-        elif x[i] == '*' and (checkformat(ord(x[i + 1])) or x[i + 1] == '('):
+        elif x[i + 1] == '(' and (checkformat(ord(x[i])) or x[i] == '*' or x[i] == '+'):
             res.append('.')
     if len(x) > 0:
         check = x[len(x) - 1]
@@ -106,6 +99,7 @@ def concatenation(nfa1, nfa2):
     val = [nfa1[1], '$', nfa2[0]]
     nfa['transition_function'].insert(indx, val)
     return [nfa1[0], nfa2[1]]
+
 def re2nfa(x):
     stack = []
     for i in x:
@@ -119,6 +113,10 @@ def re2nfa(x):
         elif i == "*":
             xt = loop(stack.pop())
             stack.append(xt)
+        elif i == "+":
+            nfa1 = stack.pop()
+            xt = loop(nfa1)
+            stack.append(xt)
         else:
             nfa2 = stack.pop()
             nfa1 = stack.pop()
@@ -126,7 +124,6 @@ def re2nfa(x):
             stack.append(xt)
     nfa["start_states"] = [stack[0][0]]
     nfa["final_states"] = [stack[0][1]]
-
 
 def simulate_NFA(input_string, current_states, transition_function, visited_states=None):
     if visited_states is None:
@@ -148,8 +145,6 @@ def simulate_NFA(input_string, current_states, transition_function, visited_stat
             epsilon_closure.update(simulate_NFA(input_string, [state], transition_function, visited_states))
     
     return epsilon_closure
-
-
 
 letters = set({})
 
