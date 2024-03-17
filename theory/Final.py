@@ -43,19 +43,23 @@ def shunt(x):
 
 def pars_str(x):
     res = []
-    for i in range(len(x) - 1):
-        res.append(x[i])
-        if (checkformat(ord(x[i])) and checkformat(ord(x[i + 1]))) or (x[i] == ')' and x[i + 1] == '('):
-            res.append('.')
-        elif checkformat(ord(x[i + 1])) and (x[i] == ')' or x[i] == '*' or x[i] == '+'):
-            res.append('.')
-        elif x[i + 1] == '(' and (checkformat(ord(x[i])) or x[i] == '*' or x[i] == '+'):
-            res.append('.')
-    if len(x) > 0:
-        check = x[len(x) - 1]
-        if check != res[len(res) - 1]:
-            res.append(check)
+    if len(x) > 1:
+        for i in range(len(x) - 1):
+            res.append(x[i])
+            if (checkformat(ord(x[i])) and checkformat(ord(x[i + 1]))) or (x[i] == ')' and x[i + 1] == '('):
+                res.append('.')
+            elif checkformat(ord(x[i + 1])) and (x[i] == ')' or x[i] == '*' or x[i] == '+'):
+                res.append('.')
+            elif x[i + 1] == '(' and (checkformat(ord(x[i])) or x[i] == '*' or x[i] == '+'):
+                res.append('.')
+        if len(x) > 0:
+            check = x[len(x) - 1]
+            if check != res[len(res) - 1]:
+                res.append(check)
+    else:
+        res = list(x)
     return ''.join(res)
+
 
 def NFA_sym(ch):
     global letters
@@ -115,7 +119,7 @@ def re2nfa(x):
             stack.append(xt)
         elif i == "+":
             nfa1 = stack.pop()
-            xt = loop(nfa1)
+            xt = concatenation(nfa1, loop(nfa1))  # Modification here
             stack.append(xt)
         else:
             nfa2 = stack.pop()
