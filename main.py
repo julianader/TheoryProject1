@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 from tkinter.font import Font 
-from nfa_code import NFAfromRegex, Automata, BuildAutomata
+from regex_to_NFA import NFAfromRegex, Automata, BuildAutomata
 import graphviz
 from PIL import Image, ImageTk
 import os
