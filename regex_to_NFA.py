@@ -41,7 +41,7 @@ class Automata:
                 self.transitions[fromstate][tostate] = inp
         else:
             self.transitions[fromstate] = {tostate : inp}
-    
+
     # Call addtransition method recursively
     def addtransition_dict(self, transitions):
         for fromstate, tostates in list(transitions.items()):
@@ -95,6 +95,17 @@ class Automata:
                         outputfile.write(str(fromstate - 1) + " " + str(char) + " " + str(state - 1))
             outputfile.write("\n")
         outputfile.close()
+
+    def display_with_states(self):
+        print("States:")
+        for state in self.states:
+            print(state)
+        print("\nTransitions:")
+        for fromstate, tostates in self.transitions.items():
+            for tostate, inputs in tostates.items():
+                for inp in inputs:
+                    print(f"{fromstate} --({inp})--> {tostate}")
+
     def test_string(self, input_string):
         current_states = self.getEClose(self.startstate)  # Get epsilon closure of the start state
 
@@ -114,6 +125,7 @@ class Automata:
             if final_state in current_states:
                 return True  # String is valid
         return False  # String is not valid
+
     # Instantiate a semi-copy Automata object and return it
     def newBuildFromNumber(self, startnum):
         translations = {}
@@ -138,6 +150,24 @@ class Automata:
         for s in self.finalstates:
             rebuild.addfinalstates(pos[s])
         return rebuild
+
+    def to_dot(self):
+      dot_code = "digraph NFA {\n"
+      dot_code += "    rankdir=LR;\n"
+      dot_code += "    node [shape = circle];\n"
+      dot_code += f"    start [shape = none, label = \"\", width = 0];\n"
+      dot_code += f"    start -> {self.startstate};\n"
+      for state in self.states:
+          if state in self.finalstates:
+              dot_code += f"    {state} [shape = doublecircle];\n"
+          for next_state, transitions in self.transitions.get(state, {}).items():
+              for symbol in transitions:
+                  if symbol != Automata.epsilon():
+                      dot_code += f"    {state} -> {next_state} [label = \"{symbol}\"];\n"
+                  else:
+                      dot_code += f"    {state} -> {next_state} [label = \"ε\"];\n"
+      dot_code += "}"
+      return dot_code
 
 class BuildAutomata:
 
@@ -297,16 +327,24 @@ class NFAfromRegex:
                 self.automata.append(BuildAutomata.unionstruct(b,a))
             elif operator == self.dot:
                 self.automata.append(BuildAutomata.dotstruct(b,a))
+
 if __name__ == "__main__":
     regex = input("Enter the regex: ")
     nfa_builder = NFAfromRegex(regex)
     nfa = nfa_builder.getNFA()
 
+    print("\nNFA States and Transitions:")
+    nfa.display_with_states()
+
     while True:
-        test_string = input("Enter a string to test (or 'quit' to exit): ")
+        test_string = input("\nEnter a string to test (or 'quit' to exit): ")
         if test_string.lower() == 'quit':
             break
         if nfa.test_string(test_string):
             print(f"'{test_string}' is valid for the regex '{regex}'.")
         else:
             print(f"'{test_string}' is not valid for the regex '{regex}'.")
+
+
+
+
